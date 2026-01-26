@@ -1,19 +1,16 @@
-%% PROGETTO ALES - REPLICAZIONE FINALE PER PRESENTAZIONE D'ESAME
-% Basato su: "Design of Unknown Input Observers" (Chen, Patton, Zhang, 1996)
+%% PROGETTO ALES - REPLICAZIONE ESATTA & ANALISI (FOCUS SCENARIO 1)
+% Reference: Chen, Patton, Zhang (1996)
 % =========================================================================
-% OBIETTIVO:
-% Dimostrare visivamente perché un filtro robusto (UIO) è superiore a uno
-% standard (BFDF) quando il modello matematico non è perfetto.
+% OBIETTIVO ESAME: 
+% Mostrare il fallimento del filtro Standard nel caso del Guasto al Sensore 1
+% e il successo del filtro Robusto nello stesso scenario.
 % =========================================================================
 
 clc; clear; close all;
 
-%% 1. DEFINIZIONE DEL SISTEMA (DATI E FATTI DAL PAPER)
-% Qui inseriamo tutti i valori numerici che gli autori ci forniscono.
-% Questi sono i "fatti" su cui basiamo la nostra simulazione.
+%% 1. DATI E MATRICI (Dal Paper)
 
-% --- MODELLO LINEARE (Pag. 17) ---
-% Questo è il modello semplificato del motore che entrambi i filtri usano.
+% --- MODELLO LINEARE ---
 A = [-1.5581,  0.6925,  0.3974;
       0.2619, -2.2228,  0.2238;
       0       0      -10    ];
@@ -23,25 +20,19 @@ C = [1       0       0;
      0       0       1;
      0.55107 0.13320 0.30603;
      0.55217 0.13526 0.32912;
-    -0.25693 -0.25693 0.61299]; % Corretto piccolo typo qui
+    -0.25693 -0.23625 0.61299];
 [n, ~] = size(A); [p, ~] = size(C);
 
-% --- ERRORE DI MODELLO (Pag. 18) ---
-% E_STAR: Rappresenta la "verità" non lineare del motore.
-% È l'errore che il filtro standard non conosce e che lo manderà in crisi.
+% --- ERRORE MODELLO (E*) E MODELLO DISTURBO (E1) ---
 E_star = [1.3293  3.4440  0.1375 -5.1304 -1.7826 -1.8719;
           5.6812 -0.5281 -0.3385 -1.6193  0.5229  0;
           0       0       0       0       0       0     ];
 
-% E1: Parte a rango pieno di E_star. Viene usata per PROGETTARE il filtro
-% robusto. Il filtro robusto non conosce E_star, ma conosce la "direzione"
-% principale del disturbo, rappresentata da E1.
 E1 = [6.2006,  2.8639;
       4.1048, -4.3262;
       0,       0     ];
 
-% --- MATRICI DEL FILTRO ROBUSTO (Fornite a Pag. 18-19) ---
-% Usiamo i valori degli autori per una replica fedele.
+% --- FILTRO ROBUSTO (Parametri forniti) ---
 H_paper = [ 0.6117, -0.1170, 0, 0.3215, 0.3220, -0.1295;
            -0.1170,  0.9382, 0, 0.0605, 0.0623, -0.1916;
             0,       0,      0, 0,      0,       0     ];
@@ -52,53 +43,39 @@ K_paper = [-0.0708,  0.0443,  0.5658,  0.1400,  0.1531,  0.3540;
             0.0443, -0.0277, -0.3540, -0.0876, -0.0958, -0.2215;
             0.5658, -0.3540, -4.5229, -1.1193, -1.2239, -2.8297];
 
-%% 2. DESIGN DEI FILTRI (Calcoli Teorici)
+%% 2. CALCOLI TEORICI
 
-% --- A. FILTRO STANDARD (BFDF) ---
-% Progettiamo il guadagno K per avere autovalori a -3, come da paper (Pag 17).
-% Questo filtro è ottimizzato per un mondo lineare perfetto.
+% A. Filtro Standard
 pole = 3;
 K_bfdf = (A + pole * eye(n)) * pinv(C);
 
-% --- B. FILTRO ROBUSTO (UIO) ---
-% Per calcolare gli NPD, ci serve la matrice interna K1. La ricaviamo dalla teoria.
-% 1. Calcolo A1 (la dinamica vista attraverso lo "scudo" T)
+% B. Filtro Robusto (K1 per NPD)
 CE1 = C * E1;
-A1 = A - E1 * inv(CE1' * CE1) * CE1' * C * A; % Formula esatta
-% 2. Calcolo K1 (il guadagno che imposta la direzionalità)
+A1 = A - E1 * inv(CE1' * CE1) * CE1' * C * A;
 K1_calc = (A1 + pole * eye(n)) * pinv(C);
 
-%% 3. SIMULAZIONE (Stress-Test per il Filtro Standard)
+%% 3. SIMULAZIONE (FOCUS SU GUASTO 1)
 
-% Parametri simulazione
-dt = 0.001; T_sim = 8; time = 0:dt:T_sim;
+dt = 0.001; T_sim = 8; time = 0:dt:T_sim; steps = length(time);
 u_val = 0.20; fault_mag = 0.02; fault_time = 2.0;
+dist_factor = 20.0; % Fattore di amplificazione errore modello
 
-% *** DISTORTION FACTOR = 25.0 ***
-% Valore calibrato per far fallire il BFDF in modo chiaro e visibile.
-% Giustificazione: Simula un forte disallineamento tra il modello lineare
-% e la realtà non-lineare, condizione in cui la robustezza è necessaria.
-dist_factor = 25.0;
-
-% Inizializzazione
+I_sens = eye(p);
 Table1 = zeros(3,3); Table2 = zeros(3,3);
-% Variabili per salvare i dati dei residui del caso di fallimento per i grafici
+
+% Variabili per salvare i dati da plottare (Solo Scenario 1)
 log_r_bfdf_plot = []; log_r_uio_plot = [];
-worst_case_scenario = 1; % Di default, ci aspettiamo fallisca sul sensore 1
 
-fprintf('Simulazione in corso (Distortion Factor = %.1f)...\n', dist_factor);
+fprintf('Simulazione in corso (Distortion = %.1f)...\n', dist_factor);
 
-for s_fault = 1:3 % Loop sui 3 scenari di guasto
-    
-    % Reset stati
+for s_fault = 1:3 
     x = zeros(n,1); x_hat_bfdf = zeros(n,1); z_uio = zeros(n,1);
     acc_bfdf = zeros(1,3); acc_uio = zeros(1,3); count = 0;
     
-    % Logger temporanei per questa simulazione
     temp_hist_bfdf = zeros(p, steps); temp_hist_uio = zeros(p, steps);
     
-    for k = 1:length(time)
-        % 1. MONDO REALE (NON-LINEARE)
+    for k = 1:steps
+        % 1. DINAMICA REALE
         d_x = [x(1)^2; x(2)^2; x(3)^2; x(1)*x(2); x(1)*x(3); x(2)*x(3)];
         dx = A*x + B*u_val + (E_star * d_x) * dist_factor;
         x = x + dx * dt;
@@ -106,106 +83,112 @@ for s_fault = 1:3 % Loop sui 3 scenari di guasto
         y_raw = C*x;
         if time(k) >= fault_time, y_raw(s_fault) = y_raw(s_fault) + fault_mag; end
         
-        % 2. FILTRO STANDARD (BFDF)
+        % 2. FILTRO STANDARD
         r_bfdf = y_raw - C * x_hat_bfdf;
         dx_bfdf = A * x_hat_bfdf + B * u_val + K_bfdf * r_bfdf;
         x_hat_bfdf = x_hat_bfdf + dx_bfdf * dt;
         
-        % 3. FILTRO ROBUSTO (UIO)
+        % 3. FILTRO ROBUSTO
         F_uio = A1 - K1_calc * C; 
         dz_uio = F_uio * z_uio + T_paper * B * u_val + K_paper * y_raw;
         z_uio = z_uio + dz_uio * dt;
         x_hat_uio = z_uio + H_paper * y_raw;
         r_uio = y_raw - C * x_hat_uio;
         
-        % Salviamo la storia dei residui per i grafici
+        % Logging
         temp_hist_bfdf(:,k) = r_bfdf; temp_hist_uio(:,k) = r_uio;
         
-        % 4. CALCOLO NPD (dopo il transitorio)
+        % 4. NPD
         if time(k) > fault_time + 2.0
             count = count + 1;
             for j = 1:3
-                Ij = eye(p,1,j-1); % Modo efficiente per creare Ij
-                % NPD Standard
+                Ij = I_sens(:,j);
+                % Standard
                 Phi = [Ij, C*K_bfdf(:,j)];
-                acc_bfdf(j) = acc_bfdf(j) + (norm(r_bfdf - Phi*(Phi\r_bfdf))/(norm(r_bfdf)+eps));
-                % NPD Robust
+                P = Phi * pinv(Phi'*Phi) * Phi';
+                r_p = P * r_bfdf;
+                acc_bfdf(j) = acc_bfdf(j) + (norm(r_bfdf-r_p)/(norm(r_bfdf)+eps));
+                % Robust
                 Phi_r = [Ij, C*K1_calc(:,j), C*H_paper(:,j)];
-                acc_uio(j) = acc_uio(j) + (norm(r_uio - Phi_r*(Phi_r\r_uio))/(norm(r_uio)+eps));
+                P_r = Phi_r * pinv(Phi_r'*Phi_r) * Phi_r';
+                r_pr = P_r * r_uio;
+                acc_uio(j) = acc_uio(j) + (norm(r_uio-r_pr)/(norm(r_uio)+eps));
             end
         end
     end
-    Table1(:, s_fault) = acc_bfdf / count;
+    Table1(:, s_fault) = acc_bfdf / count; 
     Table2(:, s_fault) = acc_uio / count;
     
-    % Se questo è lo scenario in cui il BFDF sbaglia, salviamo i dati per i plot
-    [~, min_idx_bfdf] = min(Table1(:, s_fault));
-    if min_idx_bfdf ~= s_fault
-        worst_case_scenario = s_fault;
+    % Salviamo i dati se siamo nel CASO 1 (Quello che vogliamo plottare)
+    if s_fault == 1
         log_r_bfdf_plot = temp_hist_bfdf;
         log_r_uio_plot = temp_hist_uio;
     end
 end
 
+%% 4. RISULTATI NUMERICI
 
-%% 4. RISULTATI NUMERICI (Tabelle Stile Paper)
+fprintf('\n=== ANALISI CASO GUASTO SENSORE 1 ===\n');
+fprintf('Realtà: Si è rotto il sensore 1.\n\n');
 
-fprintf('\n\n--- RISULTATI FINALI ---\n\n');
-fprintf('Table 1: BFDF (Standard) - Esempio di Mis-isolation\n');
-fprintf('Faulty sensor |    No.1   |    No.2   |    No.3   |\n');
-fprintf('-----------------------------------------------\n');
-for i=1:3, fprintf('     NPD%d     |  %.5f  |  %.5f  |  %.5f  |\n', i, Table1(i,1), Table1(i,2), Table1(3,3)); end
+fprintf('TABELLA 1 (Standard):\n');
+fprintf('Ipotesi 1 (NPD1): %.4f\n', Table1(1,1));
+fprintf('Ipotesi 2 (NPD2): %.4f  <- MINIMO! (Diagnosi Errata)\n', Table1(2,1));
+fprintf('Ipotesi 3 (NPD3): %.4f\n', Table1(3,1));
 
-fprintf('\n\nTable 2: UIO (Robust) - Isolamento Corretto\n');
-fprintf('Faulty sensor |    No.1   |    No.2   |    No.3   |\n');
-fprintf('-----------------------------------------------\n');
-for i=1:3, fprintf('     NPD%d     |  %.5f  |  %.5f  |  %.5f  |\n', i, Table2(i,1), Table2(i,2), Table2(i,3)); end
+fprintf('\nTABELLA 2 (Robust):\n');
+fprintf('Ipotesi 1 (NPD1): %.4f  <- MINIMO! (Diagnosi Corretta)\n', Table2(1,1));
+fprintf('Ipotesi 2 (NPD2): %.4f\n', Table2(2,1));
+fprintf('Ipotesi 3 (NPD3): %.4f\n', Table2(3,1));
 
-%% 5. GRAFICI PER LA PRESENTAZIONE
+%% 5. GRAFICI PRESENTAZIONE (FOCUS SCENARIO 1)
 
-% --- GRAFICO 1: IL FALLIMENTO (Bar Chart) ---
-figure('Color','w','Position',[50 400 600 500]);
-data_bar = [Table1(:,worst_case_scenario), Table2(:,worst_case_scenario)];
-bar(data_bar);
-title(sprintf('Analisi Guasto Sensore %d (Caso Critico)', worst_case_scenario));
-xlabel('Ipotesi del Filtro'); ylabel('Distanza NPD (Basso = Match)');
-xticklabels({'Ipotesi 1', 'Ipotesi 2', 'Ipotesi 3'});
-legend('Standard (Sbaglia)', 'Robusto (Corretto)', 'Location','NorthWest');
+% --- GRAFICO A BARRE: IL FALLIMENTO ---
+figure('Color','w','Position',[50 50 700 450]);
+
+% Prendiamo la PRIMA COLONNA delle tabelle (Caso Fault 1)
+data_bar = [Table1(:,1), Table2(:,1)]; 
+
+b = bar(data_bar);
+title({'FALLIMENTO DEL FILTRO STANDARD', 'Scenario Reale: Guasto Sensore 1'});
+xlabel('Ipotesi del Filtro (Quale sensore è rotto?)'); 
+ylabel('NPD (Minore = Più probabile)');
+xticklabels({'Sensore 1', 'Sensore 2', 'Sensore 3'});
+legend('Standard BFDF', 'Robust UIO', 'Location','NorthOutside');
 grid on;
-[~, wrong_idx] = min(Table1(:,worst_case_scenario));
-text(wrong_idx, Table1(wrong_idx, worst_case_scenario), '\downarrow Errore!', ...
-    'Vert','bottom', 'Horiz','center', 'Color','r', 'FontWeight','bold', 'FontSize',12);
 
-% --- GRAFICO 2: LA SPIEGAZIONE GEOMETRICA (3D) ---
+% Evidenziamo l'errore grafico
+% Coordinata (2, ValoreNPD2_Standard) -> Lì c'è l'errore
+x_wrong = 2 - 0.15; % Spostato un po' a sinistra sulla barra blu
+y_wrong = Table1(2,1);
+text(x_wrong, y_wrong, '\downarrow Standard: "È il 2!" (ERRORE)', ...
+    'Vert','bottom', 'Horiz','center', 'Color','r', 'FontWeight','bold', 'FontSize',10);
+
+% Evidenziamo la correttezza
+x_right = 1 + 0.15; % Spostato a destra sulla barra arancio
+y_right = Table2(1,1);
+text(x_right, y_right, '\downarrow Robusto: "È l''1!" (CORRETTO)', ...
+    'Vert','bottom', 'Horiz','center', 'Color','b', 'FontWeight','bold', 'FontSize',10);
+
+
+% --- GRAFICO 3D: PERCHÉ FUNZIONA? ---
 idx_st = find(time >= fault_time, 1);
-r_b_plot = log_r_bfdf_plot(1:3, idx_st:end);
-r_u_plot = log_r_uio_plot(1:3, idx_st:end);
+r_b = log_r_bfdf_plot(1:3, idx_st:end);
+r_u = log_r_uio_plot(1:3, idx_st:end);
 
-figure('Color','w','Position',[700 400 800 500]);
+figure('Color','w','Position',[800 50 800 500]);
 subplot(1,2,1);
-plot3(r_b_plot(1,:), r_b_plot(2,:), r_b_plot(3,:), 'r'); grid on; axis tight;
-title({'STANDARD BFDF', 'Residuo "Sporco" e Caotico'});
-xlabel('r_1'); ylabel('r_2'); zlabel('r_3'); view(30,20);
-subtitle('L''errore di modello sposta il residuo');
+plot3(r_b(1,:), r_b(2,:), r_b(3,:), 'r'); grid on; axis equal; view(45,30);
+title({'STANDARD BFDF', 'Residuo disperso (Nessuna direzione)'});
+xlabel('r1'); ylabel('r2'); zlabel('r3');
 
 subplot(1,2,2);
-plot3(r_u_plot(1,:), r_u_plot(2,:), r_u_plot(3,:), 'b', 'LineWidth', 2); grid on; axis tight;
-title({'ROBUST UIO', 'Residuo Pulito e Direzionale'});
-xlabel('r_1'); ylabel('r_2'); zlabel('r_3'); view(30,20);
-subtitle('Il residuo segue una direzione precisa');
-
-% --- GRAFICO 3: LA SPIEGAZIONE TEMPORALE ---
-figure('Color','w','Position',[50 50 1450 300]);
-subplot(1,2,1);
-plot(time, log_r_bfdf_plot(worst_case_scenario,:), 'r');
-xline(fault_time,'--k', 'Guasto');
-title('Residuo Standard (r_1 nel caso di guasto 1)');
-ylabel('Ampiezza'); xlabel('Tempo (s)'); grid on;
-subtitle('Oscilla anche prima del guasto a causa dell''errore di modello');
-
-subplot(1,2,2);
-plot(time, log_r_uio_plot(worst_case_scenario,:), 'b');
-xline(fault_time,'--k', 'Guasto');
-title('Residuo Robusto (r_1 nel caso di guasto 1)');
-ylabel('Ampiezza'); xlabel('Tempo (s)'); grid on;
-subtitle('Piatto fino al guasto: l''errore è stato cancellato');
+plot3(r_u(1,:), r_u(2,:), r_u(3,:), 'b', 'LineWidth',1.5); grid on; axis equal; view(45,30);
+hold on;
+% Disegniamo la direzione teorica ideale (Firma Guasto 1)
+ideal_dir = C * K1_calc(:,1); 
+scale = max(abs(r_u(:))) / max(abs(ideal_dir));
+plot3([0 ideal_dir(1)*scale], [0 ideal_dir(2)*scale], [0 ideal_dir(3)*scale], 'k--', 'LineWidth', 2);
+title({'ROBUST UIO', 'Allineato alla "Firma" (Tratteggiata)'});
+xlabel('r1'); ylabel('r2'); zlabel('r3');
+legend('Residuo Reale', 'Firma Teorica Guasto 1');
