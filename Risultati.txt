@@ -1,0 +1,16 @@
+Starting Simulations...
+Simulating Fault in Sensor 1...
+Simulating Fault in Sensor 2...
+Simulating Fault in Sensor 3...
+
+=== TABLE 1: BFDF (Standard) ===
+Faulty Sens | NPD1     | NPD2     | NPD3
+Sensor 1    | 0.27317  | 0.99726  | 0.87403
+Sensor 2    | 0.85264  | 0.26030  | 0.99395
+Sensor 3    | 0.75526  | 0.78254  | 0.16781
+
+=== TABLE 2: ROBUST UIO (Paper Method) ===
+Faulty Sens | NPD1     | NPD2     | NPD3
+Sensor 1    | 0.00000  | 0.48606  | 0.85962
+Sensor 2    | 0.41782  | 0.00000  | 0.70856
+Sensor 3    | 0.21484  | 0.20601  | 0.00000
