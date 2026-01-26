@@ -58,7 +58,7 @@ K_bfdf = (A + sigma * eye(n)) * pinv(C);
 % Il paper non da K1 esplicito, ma dice come calcolarlo (Eq. 25).
 % Prima calcoliamo A1 = T*A (Eq. 13 semplificata o derivata)
 % Verifica: A1 dovrebbe essere stabile o stabilizzabile.
-A1 = T_paper * A; 
+A1 = T_paper * A; % DA VERIFICARE
 % Calcolo K1 (autovalori a -3 come da testo pag 18)
 K1_calc = (A1 + sigma * eye(n)) * pinv(C);
 
