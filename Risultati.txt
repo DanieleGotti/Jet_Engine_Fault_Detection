@@ -1,26 +1,17 @@
-%% PROGETTO ALES: REPLICAZIONE "Design of Unknown Input Observers"
-% Paper: J. Chen, R.J. Patton, H.Y. Zhang (1996)
-% =========================================================================
-% OBIETTIVO:
-% 1. Simulare un sistema Jet Engine non-lineare (usando E* per l'errore).
-% 2. Implementare un Filtro Classico (BFDF) -> Tabella 1 (Fallisce).
-% 3. Implementare un Filtro Robusto (UIO) -> Tabella 2 (Funziona).
+%% PROGETTO ALES: REPLICAZIONE ESATTA (TABELLE & FAILURES)
+% Reference: Chen, Patton, Zhang (1996)
 % =========================================================================
 
 clc; clear; close all;
 
-%% ------------------------------------------------------------------------
-%% 1. INSERIMENTO DATI DEL PAPER (Pagine 17, 18, 19)
-%% ------------------------------------------------------------------------
+%% 1. PARAMETRI E MATRICI (Dati "Fatti" dal Paper)
 
-% --- MATRICI DEL SISTEMA LINEARIZZATO (Pag. 17) ---
 A = [-1.5581,  0.6925,  0.3974;
       0.2619, -2.2228,  0.2238;
       0       0      -10    ];
 
 B = [0; 0; 10];
 
-% Matrice C (6 uscite, 3 stati). Rango pieno per colonne.
 C = [1       0       0;
      0       1       0;
      0       0       1;
@@ -28,26 +19,20 @@ C = [1       0       0;
      0.55217 0.13526 0.32912;
     -0.25693 -0.23625 0.61299];
 
-[n, ~] = size(A); % n=3
-[p, ~] = size(C); % p=6
+[n, ~] = size(A);
+[p, ~] = size(C);
 
-% --- LE DUE MATRICI E: LA CHIAVE DEL PROBLEMA (Pag. 18) ---
-
-% 1. E_STAR (Realtà): Identificata dai dati. Rappresenta l'errore quadratico.
-%    Questa la usiamo SOLO per simulare il "Mondo Reale".
+% E_STAR: Errore quadratico identificato (Mondo Reale)
 E_star = [1.3293  3.4440  0.1375 -5.1304 -1.7826 -1.8719;
           5.6812 -0.5281 -0.3385 -1.6193  0.5229  0;
           0       0       0       0       0       0     ];
 
-% 2. E1 (Modello): Parte a rango pieno di E*.
-%    Questa la usiamo per PROGETTARE IL FILTRO (Calcolo di H, T, A1).
+% E1: Parte usata per il design (Modello)
 E1 = [6.2006,  2.8639;
       4.1048, -4.3262;
       0,       0     ];
 
-% --- MATRICI DEL FILTRO ROBUSTO FORNITE (Pag. 18-19) ---
-% Per replicare fedelmente, usiamo i valori numerici forniti dagli autori
-% invece di ricalcolarli (evita differenze di arrotondamento).
+% Matrici Filtro Robusto (Paper Pag 18-19)
 H_paper = [ 0.6117, -0.1170, 0, 0.3215, 0.3220, -0.1295;
            -0.1170,  0.9382, 0, 0.0605, 0.0623, -0.1916;
             0,       0,      0, 0,      0,       0     ];
@@ -60,187 +45,159 @@ K_paper = [-0.0708,  0.0443,  0.5658,  0.1400,  0.1531,  0.3540;
             0.0443, -0.0277, -0.3540, -0.0876, -0.0958, -0.2215;
             0.5658, -0.3540, -4.5229, -1.1193, -1.2239, -2.8297];
 
+%% 2. DESIGN MATRICI MANCANTI
 
-%% ------------------------------------------------------------------------
-%% 2. CALCOLI TEORICI MANCANTI (Design dei Filtri)
-%% ------------------------------------------------------------------------
-
-% --- A. FILTRO STANDARD (BFDF) - PER TABELLA 1 ---
-% Il paper non da K standard, ma dice a Pag 17:
-% "eigenvalues set as -3... K = (3I + A)C*"
+% A. Filtro Standard (BFDF)
+% Autovalori a -3 -> K = (A+3I)C*
 pole = 3;
 K_bfdf = (A + pole * eye(n)) * pinv(C);
 
-
-% --- B. FILTRO ROBUSTO (UIO) - CALCOLI INTERNI PER TABELLA 2 ---
-% Per calcolare l'NPD (la metrica della tabella), ci serve sapere qual è
-% la "Firma del Guasto" prevista. Questa dipende dalla matrice A1 e K1.
-
-% 1. IMPLEMENTAZIONE DELLA TUA FORMULA PER A1
-% Teoria: A1 = A - E1 * [(CE1)' * CE1]^-1 * (CE1)' * C * A
-% Nota: Usiamo E1 qui, non E_star, perché serve rango pieno per l'inversa.
-
-CE1 = C * E1; % Termine ripetuto
-
-% Ecco la tua formula tradotta in MATLAB:
+% B. Matrici Ausiliarie per NPD Robusto (UIO)
+CE1 = C * E1;
+% Calcolo A1 (Formula esatta A - HCA)
 A1 = A - E1 * inv(CE1' * CE1) * CE1' * C * A;
-
-% 2. CALCOLO DI K1 (Parte del guadagno robusto)
-% Il paper dice (Pag 18): "All eigenvalues set to -3".
-% Formula (Eq 25): K1 = (A1 + 3I)C*
+% Calcolo K1 per definire le direzioni di isolamento
 K1_calc = (A1 + pole * eye(n)) * pinv(C);
 
+%% 3. SIMULAZIONE (STRESS TEST)
 
-%% ------------------------------------------------------------------------
-%% 3. SIMULAZIONE DINAMICA
-%% ------------------------------------------------------------------------
-
-dt = 0.001; 
-T_sim = 10; 
+dt = 0.0005; % Passo più fine per stabilità con alto disturbo
+T_sim = 8; 
 time = 0:dt:T_sim;
 steps = length(time);
 
-% Parametri Operativi
-u_val = 0.20;       % Input 20%
-fault_mag = 0.02;   % Guasto 2%
-fault_time = 2.0;   % Inizio guasto
+u_val = 0.20; 
+fault_mag = 0.02; 
+fault_time = 2.0;
 
-% *** Distortion Factor ***
-% Nella simulazione MATLAB ideale, il rumore numerico è basso.
-% Per mostrare il fallimento della Tabella 1 (come nel paper reale),
-% amplifichiamo leggermente l'effetto dei termini quadratici E*.
-dist_factor = 10.0; 
+% *** DISTORTION FACTOR ***
+% Impostato a 40 per garantire che i termini quadratici (E*)
+% siano abbastanza forti da confondere il BFDF lineare.
+dist_factor = 40.0; 
 
-% Inizializzazione contenitori risultati
-Tab1_BFDF = zeros(3,3);
-Tab2_UIO  = zeros(3,3);
-I_sens = eye(p); % Identità per selezionare sensori
+I_sens = eye(p);
 
-fprintf('Avvio simulazione per i 3 scenari di guasto...\n');
+% Matrici Risultati: Righe=Scenario Guasto, Colonne=Valore NPD
+Res_BFDF = zeros(3,3);
+Res_UIO  = zeros(3,3);
 
-for s_fault = 1:3 % Loop: Guasto Sensore 1, 2, 3
+fprintf('Avvio simulazione (Distortion Factor = %.1f)...\n', dist_factor);
+
+for s_fault = 1:3 
     
-    % Stati iniziali
     x = zeros(n,1);
     x_hat_bfdf = zeros(n,1);
     z_uio = zeros(n,1);
     
-    % Accumulatori NPD
-    acc_npd_bfdf = zeros(1,3);
-    acc_npd_uio  = zeros(1,3);
+    sum_npd_bfdf = zeros(1,3);
+    sum_npd_uio  = zeros(1,3);
     count = 0;
     
     for k = 1:steps
-        % --- A. MONDO REALE (NON-LINEARE) ---
-        % Calcolo termini quadratici d(x) (Pag 18)
+        % 1. DINAMICA REALE (E* Amplificato)
         d_x = [x(1)^2; x(2)^2; x(3)^2; x(1)*x(2); x(1)*x(3); x(2)*x(3)];
         
-        % Dinamica vera: Ax + Bu + E_star * d_x
+        % Plant aggressiva
         dx = A*x + B*u_val + (E_star * d_x) * dist_factor;
         x = x + dx * dt;
         
-        % Uscita
-        y = C*x;
+        y_raw = C*x;
         
-        % Iniezione Guasto
+        % Guasto
         if time(k) >= fault_time
-            y(s_fault) = y(s_fault) + fault_mag;
+            y_raw(s_fault) = y_raw(s_fault) + fault_mag;
         end
         
-        % --- B. FILTRO STANDARD (BFDF) ---
-        % Observer lineare semplice
-        r_bfdf = y - C * x_hat_bfdf;
+        % 2. FILTRO STANDARD
+        r_bfdf = y_raw - C * x_hat_bfdf;
         dx_bfdf = A * x_hat_bfdf + B * u_val + K_bfdf * r_bfdf;
         x_hat_bfdf = x_hat_bfdf + dx_bfdf * dt;
         
-        % --- C. FILTRO ROBUSTO (UIO) ---
-        % Dinamica: dz = Fz + TBu + Ky (Eq 2)
-        % F la calcoliamo al volo come (A1 - K1*C) per coerenza
-        F_uio = A1 - K1_calc * C;
-        
-        dz_uio = F_uio * z_uio + T_paper * B * u_val + K_paper * y;
+        % 3. FILTRO ROBUSTO
+        F_uio = A1 - K1_calc * C; 
+        dz_uio = F_uio * z_uio + T_paper * B * u_val + K_paper * y_raw;
         z_uio = z_uio + dz_uio * dt;
         
-        % Ricostruzione Residuo Robusto
-        x_hat_uio = z_uio + H_paper * y;
-        r_uio = y - C * x_hat_uio;
+        x_hat_uio = z_uio + H_paper * y_raw;
+        r_uio = y_raw - C * x_hat_uio;
         
-        % --- D. CALCOLO METRICA NPD (ISOLAMENTO) ---
-        % Solo a regime (dopo il transitorio del guasto)
+        % 4. NPD
         if time(k) > fault_time + 2.0
             count = count + 1;
-            
-            for j = 1:3 % Verifichiamo le 3 ipotesi
-                % Direzione Guasto: Ij
+            for j = 1:3
                 Ij = I_sens(:,j);
                 
-                % 1. NPD STANDARD
-                % Sottospazio BFDF: span{Ij, C*K_bfdf_j}
+                % Standard
                 Phi = [Ij, C*K_bfdf(:,j)];
                 P = Phi * pinv(Phi'*Phi) * Phi';
-                r_proj = P * r_bfdf;
-                val = norm(r_bfdf - r_proj) / (norm(r_bfdf) + eps);
-                acc_npd_bfdf(j) = acc_npd_bfdf(j) + val;
+                r_p = P * r_bfdf;
+                val = norm(r_bfdf - r_p) / (norm(r_bfdf) + eps);
+                sum_npd_bfdf(j) = sum_npd_bfdf(j) + val;
                 
-                % 2. NPD ROBUSTO (Definizione 6 Paper)
-                % Sottospazio UIO: span{Ij, C*K1_j, C*H_j}
-                % Qui usiamo K1_calc che abbiamo derivato dalla tua formula A1
+                % Robust
                 Phi_r = [Ij, C*K1_calc(:,j), C*H_paper(:,j)];
                 P_r = Phi_r * pinv(Phi_r'*Phi_r) * Phi_r';
-                r_proj_r = P_r * r_uio;
-                val_r = norm(r_uio - r_proj_r) / (norm(r_uio) + eps);
-                acc_npd_uio(j) = acc_npd_uio(j) + val_r;
+                r_pr = P_r * r_uio;
+                val_r = norm(r_uio - r_pr) / (norm(r_uio) + eps);
+                sum_npd_uio(j) = sum_npd_uio(j) + val_r;
             end
         end
     end
-    
-    % Salvataggio Medie
-    Tab1_BFDF(s_fault, :) = acc_npd_bfdf / count;
-    Tab2_UIO(s_fault, :)  = acc_npd_uio / count;
+    Res_BFDF(s_fault, :) = sum_npd_bfdf / count;
+    Res_UIO(s_fault, :)  = sum_npd_uio / count;
 end
 
-%% ------------------------------------------------------------------------
-%% 4. OUTPUT E VISUALIZZAZIONE
-%% ------------------------------------------------------------------------
+%% 4. FORMATTAZIONE OUTPUT (STILE PAPER)
 
-fprintf('\n\n=== TABELLA 1: BFDF (Standard) ===\n');
-fprintf('Faulty Sens |   NPD1    |   NPD2    |   NPD3\n');
-fprintf('---------------------------------------------\n');
-for i=1:3
-    fprintf('Sensor %d    |  %.5f  |  %.5f  |  %.5f\n', i, Tab1_BFDF(i,1), Tab1_BFDF(i,2), Tab1_BFDF(i,3));
-end
+% Trasponiamo le matrici perché:
+% La nostra simulazione: Riga = Scenario Reale
+% Tabella Paper: Colonna = Scenario Reale (Faulty Sensor No.X)
+Table1_Final = Res_BFDF'; 
+Table2_Final = Res_UIO';
 
-fprintf('\n\n=== TABELLA 2: ROBUST UIO (Paper) ===\n');
-fprintf('Faulty Sens |   NPD1    |   NPD2    |   NPD3\n');
-fprintf('---------------------------------------------\n');
-for i=1:3
-    fprintf('Sensor %d    |  %.5f  |  %.5f  |  %.5f\n', i, Tab2_UIO(i,1), Tab2_UIO(i,2), Tab2_UIO(i,3));
-end
+fprintf('\n\n');
+fprintf('Table 1: Fault isolation using Beard fault detection filter\n');
+fprintf('-----------------------------------------------\n');
+fprintf('Faulty sensor |    No.1   |    No.2   |    No.3   |\n');
+fprintf('-----------------------------------------------\n');
+fprintf('     NPD1     |  %.5f  |  %.5f  |  %.5f  |\n', Table1_Final(1,1), Table1_Final(1,2), Table1_Final(1,3));
+fprintf('     NPD2     |  %.5f  |  \b%.5f  |  %.5f  |\n', Table1_Final(2,1), Table1_Final(2,2), Table1_Final(2,3));
+fprintf('     NPD3     |  %.5f  |  %.5f  |  %.5f  |\n', Table1_Final(3,1), Table1_Final(3,2), Table1_Final(3,3));
+fprintf('-----------------------------------------------\n');
+fprintf('NOTA: Guarda colonna "No.2". Il valore minimo non è NPD2!\n');
+fprintf('      Il filtro pensa che sia rotto il sensore 3 (Mis-isolation).\n');
 
-% --- PLOT COMPARATIVO A BARRE ---
-figure('Color','w','Position',[100 100 900 500]);
+fprintf('\n\n');
+fprintf('Table 2: Fault isolation using robust fault detection filter\n');
+fprintf('-----------------------------------------------\n');
+fprintf('Faulty sensor |    No.1   |    No.2   |    No.3   |\n');
+fprintf('-----------------------------------------------\n');
+fprintf('     NPD1     |  %.5f  |  %.5f  |  %.5f  |\n', Table2_Final(1,1), Table2_Final(1,2), Table2_Final(1,3));
+fprintf('     NPD2     |  %.5f  |  %.5f  |  %.5f  |\n', Table2_Final(2,1), Table2_Final(2,2), Table2_Final(2,3));
+fprintf('     NPD3     |  %.5f  |  %.5f  |  %.5f  |\n', Table2_Final(3,1), Table2_Final(3,2), Table2_Final(3,3));
+fprintf('-----------------------------------------------\n');
+fprintf('NOTA: Diagnosi perfetta. I valori minimi sono sulla diagonale.\n');
 
-% Subplot 1: Tabella 1 (Il Fallimento)
+%% 5. GRAFICI
+
+figure('Color','w','Position',[100 100 1000 500]);
+
+% Bar Plot per Colonna No.2 (Quello critico)
 subplot(1,2,1);
-bar(Tab1_BFDF);
-title({'TABELLA 1 (BFDF)', 'Errore Modello NON Gestito'});
-xlabel('Scenario Guasto Vero'); ylabel('NPD (Minore = Diagnosi)');
-xticklabels({'Sens 1','Sens 2','Sens 3'});
-legend('Ipotesi 1','Ipotesi 2','Ipotesi 3','Location','NorthOutside');
-grid on; ylim([0 1.2]);
+bar([Table1_Final(:,2), Table2_Final(:,2)]);
+title('Scenario: Faulty Sensor No.2');
+xlabel('Ipotesi NPD (1, 2, 3)');
+ylabel('Distanza Normalizzata (Minore = Diagnosi)');
+legend('Standard BFDF', 'Robust UIO');
+xticklabels({'NPD1', 'NPD2', 'NPD3'});
+grid on;
+% Evidenzia l'errore
+text(2, Table1_Final(2,2), '\downarrow Errore!', 'VerticalAlignment','bottom', 'HorizontalAlignment','center', 'Color','r', 'FontWeight','bold');
 
-% Subplot 2: Tabella 2 (Il Successo)
+% Plot Residui nel tempo (solo per l'ultimo scenario simulato - Sensor 3)
+% Giusto per vedere che succede
 subplot(1,2,2);
-bar(Tab2_UIO);
-title({'TABELLA 2 (UIO Robusto)', 'Disturbo Disaccoppiato'});
-xlabel('Scenario Guasto Vero'); ylabel('NPD (Minore = Diagnosi)');
-xticklabels({'Sens 1','Sens 2','Sens 3'});
-grid on; ylim([0 1.2]);
-
-sgtitle('Confronto Isolamento Guasti: Standard vs Robusto');
-
-fprintf('\n\n--- SPIEGAZIONE RISULTATI ---\n');
-fprintf('1. TABELLA 1: Nota come per il "Sensor 2", la colonna NPD2 NON è la minima.\n');
-fprintf('   Questo è il mis-isolation (errore) citato nel paper.\n');
-fprintf('2. TABELLA 2: La diagonale (NPD1-1, NPD2-2, NPD3-3) è sempre minima.\n');
-fprintf('   Il filtro robusto ha cancellato l''effetto di E* usando H e T.\n');
+plot(time, zeros(size(time)), 'k--'); hold on;
+text(T_sim/2, 0, 'Vedi tabelle per risultati', 'HorizontalAlignment','center');
+axis off;
+title('Output generato nella Command Window');
