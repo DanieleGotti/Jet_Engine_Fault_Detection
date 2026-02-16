@@ -1,0 +1,8 @@
+Figura 1 (Istogramma): "The Final Verdict"
+Commento: "This chart summarizes the core finding. The Standard Filter (orange) misidentifies the fault on Sensor 1 as a fault on Sensor 2 (lowest bar is wrong). The Robust Filter (green) correctly identifies Sensor 1 (lowest bar is correct)."
+Figura 2 (Dinamica Fallimento): "Standard Filter Chaos"
+Commento: "Here we see the decision process over time for the Standard Filter. Notice how the Red line (Hypothesis S2) drops below the Green line (Hypothesis S1). The filter is confused by the non-linearities."
+Figura 3 (Dinamica Successo): "Robust Filter Precision"
+Commento: "In contrast, look at the Robust Filter. The Green line (Hypothesis S1) drops instantly to zero at the moment of the fault. The decision is immediate and unambiguous."
+Figura 4 (Robustezza Temporale): "Decoupling in Action"
+Commento: "Finally, this graph shows why the Robust Filter is superior before the fault even happens. The Orange line shows the Standard Filter reacting to model noise (false alarms), while the Green line remains flat at zero, proving perfect disturbance decoupling."
