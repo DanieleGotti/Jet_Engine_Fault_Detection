@@ -209,7 +209,7 @@ xline(fault_time, 'k--', 'Fault Injection (t=3s)');
 
 title('Full Timeline Analysis: Residual Magnitude ||r(t)||');
 xlabel('Time [s]'); ylabel('Magnitude');
-legend('Standard Filter (Sensitive to errors)', 'Robust Filter (Decoupled)', 'Location', 'NorthWest');
+legend('Standard Filter (Sensitive to errors)', 'Robust Filter (Decoupled)', 'Location', 'SouthEast');
 grid on;
 text(1.5, 0.025, 'FALSE ALARMS RISK', 'Color', [0.85 0.33 0.1], 'FontWeight', 'bold', 'HorizontalAlignment', 'center');
 text(1.5, 0.002, 'Perfect Silence', 'Color', [0.1 0.6 0.3], 'FontWeight', 'bold', 'HorizontalAlignment', 'center');
