@@ -1,35 +1,8 @@
-Guida alla Presentazione (Cosa dire al Prof)
-Ecco la narrazione da usare mentre mostri questi grafici:
-1. Mostrando il Grafico a Barre (Grafico 1)
-"In questo grafico analizziamo cosa succede quando si rompe il Sensore 2.
-Le barre BLU rappresentano il filtro Standard. Vediamo che la barra dell'Ipotesi 2 (quella corretta) NON è la più bassa. Il filtro è confuso dagli errori di linearizzazione e potrebbe segnalare un falso allarme sul Sensore 1 o 3.
-Le barre ARANCIONI rappresentano il filtro Robusto UIO. Qui l'Ipotesi 2 è chiaramente la minima, quasi zero. La diagnosi è corretta."
-2. Mostrando il Grafico Temporale (Grafico 3)
-"Per capire il perché, guardiamo i residui nel tempo.
-A sinistra (Standard), vediamo che ancora prima del guasto (linea tratteggiata), il residuo non è zero ma oscilla. Questo è l'errore quadratico (
-E
-∗
-E 
-∗
- 
-) che 'sporca' la stima.
-A destra (Robusto), il residuo è piatto fino al guasto. Questo dimostra l'efficacia del Disaccoppiamento dei Disturbi ottenuto tramite le matrici 
-H
-H
- e 
-T
-T
-."
-3. Mostrando il Grafico 3D (Grafico 2 - Il Wow Factor)
-"Infine, questo grafico mostra il concetto di Residuo Direzionale nello spazio.
-A sinistra, il filtro Standard produce un residuo che vaga nello spazio in modo caotico a causa dei disturbi. Non ha una direzione precisa.
-A destra, il filtro Robusto costringe il residuo a muoversi lungo una linea retta (o un piano specifico). Questa retta è la Firma del Guasto. Poiché il residuo è 'bloccato' su questa direzione, calcolare l'NPD (la distanza dalla retta) diventa estremamente preciso, permettendo l'isolamento perfetto mostrato nella Tabella 2."
-Nota Tecnica sul Distortion Factor
-Se il prof chiede: "Perché hai usato un fattore di distorsione 20?"
-Rispondi: "Il paper originale usa un simulatore non-lineare complesso che non è pubblico. Noi abbiamo usato l'approssimazione quadratica 
-E
-∗
-E 
-∗
- 
- fornita. Poiché in una simulazione ideale il rumore è basso, ho dovuto scalare questo termine d'errore per rendere il rapporto Segnale/Rumore comparabile a quello di un motore reale e mettere in crisi il filtro lineare, come avviene nel paper."
+Figura 1 (Istogramma): "The Final Verdict"
+Commento: "This chart summarizes the core finding. The Standard Filter (orange) misidentifies the fault on Sensor 1 as a fault on Sensor 2 (lowest bar is wrong). The Robust Filter (green) correctly identifies Sensor 1 (lowest bar is correct)."
+Figura 2 (Dinamica Fallimento): "Standard Filter Chaos"
+Commento: "Here we see the decision process over time for the Standard Filter. Notice how the Red line (Hypothesis S2) drops below the Green line (Hypothesis S1). The filter is confused by the non-linearities."
+Figura 3 (Dinamica Successo): "Robust Filter Precision"
+Commento: "In contrast, look at the Robust Filter. The Green line (Hypothesis S1) drops instantly to zero at the moment of the fault. The decision is immediate and unambiguous."
+Figura 4 (Robustezza Temporale): "Decoupling in Action"
+Commento: "Finally, this graph shows why the Robust Filter is superior before the fault even happens. The Orange line shows the Standard Filter reacting to model noise (false alarms), while the Green line remains flat at zero, proving perfect disturbance decoupling."
