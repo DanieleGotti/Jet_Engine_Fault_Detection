@@ -1,14 +1,4 @@
 %% ALES PROJECT - ROBUST FAULT DIAGNOSIS (CHEN, PATTON, ZHANG 1996)
-% =========================================================================
-% REPLICATION & VISUALIZATION (FINAL STORYTELLING VERSION)
-%
-% Scenario: Real Fault on Sensor 1 at t = 3.0s
-% Goal: 
-% 1. Show Standard Filter failing dynamically (mis-isolation).
-% 2. Show Robust Filter succeeding dynamically (perfect isolation).
-% 3. Compare Residual Magnitude over full time (False Alarms vs Stability).
-% 4. Summary Bar Chart (The "Smoking Gun").
-% =========================================================================
 
 clc; clear; close all;
 
@@ -25,7 +15,8 @@ C = [1,0,0; 0,1,0; 0,0,1;
      0.55107, 0.13320, 0.30603; 
      0.55217, 0.13526, 0.32912; 
     -0.25693, -0.23625, 0.61299];
-[n, ~] = size(A); [p, ~] = size(C);
+[n, ~] = size(A); 
+[p, ~] = size(C);
 
 % --- NON-LINEAR ERROR TERMS ---
 % This matrix (E*) represents the "Reality Gap". It distributes second-order
@@ -76,66 +67,116 @@ fault_time = 3.0;   % Fault occurs at 3 seconds
 % the Standard Filter fail, highlighting the need for Robustness.
 dist_factor = 20.0; 
 
-% Init Logs
-log_r_bfdf = zeros(p, steps);
-log_r_uio = zeros(p, steps);
-log_npd_bfdf_dyn = zeros(3, steps); % Log for Standard Filter Decision
-log_npd_uio_dyn = zeros(3, steps);  % Log for Robust Filter Decision
+% Matrices to store the final Table results for all 3 sensors
+Table1_BFDF = zeros(3,3);
+Table2_UIO  = zeros(3,3);
 
-% We only simulate Fault Case 1 (Sensor 1 Broken)
-s_fault = 1; 
-x = zeros(n,1); x_hat_bfdf = zeros(n,1); z_uio = zeros(n,1);
+fprintf('Starting simulations to generate Table 1 and Table 2 (Distortion Factor = %.1f)...\n\n', dist_factor);
 
-fprintf('Simulating Fault on Sensor 1 (Distortion Factor = %.1f)...\n', dist_factor);
+% Loop through all 3 sensor fault scenarios
+for s_fault = 1:3
+    
+    % Init states for each fault scenario
+    x = zeros(n,1); 
+    x_hat_bfdf = zeros(n,1); 
+    z_uio = zeros(n,1);
+    
+    % Init Logs
+    log_r_bfdf = zeros(p, steps);
+    log_r_uio = zeros(p, steps);
+    log_npd_bfdf_dyn = zeros(3, steps); % Log for Standard Filter Decision
+    log_npd_uio_dyn = zeros(3, steps);  % Log for Robust Filter Decision
 
-for k = 1:steps
-    % 1. Non-Linear Plant Dynamics (The "Real World")
-    % We construct the quadratic terms vector d(x)
-    d_x = [x(1)^2; x(2)^2; x(3)^2; x(1)*x(2); x(1)*x(3); x(2)*x(3)];
-    % The state evolves using Linear Dynamics + Amplified Non-Linear Error
-    dx = A*x + B*u_val + (E_star * d_x) * dist_factor;
-    x = x + dx * dt;
-    
-    % Output Generation & Fault Injection
-    y_raw = C*x;
-    if time(k) >= fault_time, y_raw(s_fault) = y_raw(s_fault) + fault_mag; end
-    
-    % 2. Standard Filter (BFDF) Execution
-    % Standard observer equation: dx = Ax + Bu + K(y - Cx)
-    r_bfdf = y_raw - C * x_hat_bfdf;
-    dx_bfdf = A * x_hat_bfdf + B * u_val + K_bfdf * r_bfdf;
-    x_hat_bfdf = x_hat_bfdf + dx_bfdf * dt;
-    
-    % 3. Robust Filter (UIO) Execution
-    % Uses the z-state and T matrix to decouple disturbances.
-    dz_uio = F_paper * z_uio + T_paper * B * u_val + K_paper * y_raw;
-    z_uio = z_uio + dz_uio * dt;
-    r_uio = y_raw - C * (z_uio + H_paper * y_raw);
-    
-    % Logging Residuals for plotting
-    log_r_bfdf(:,k) = r_bfdf;
-    log_r_uio(:,k) = r_uio;
-    
-    % 4. Dynamic NPD Calculation
-    % We calculate the "match score" for every sensor hypothesis at every time step.
-    for j=1:3
-        % -- Standard Filter NPD --
-        Phi = [eye(p)*0 + (j==1:p)', C*K_bfdf(:,j)]; 
-        Phi(:,1) = zeros(p,1); Phi(j,1) = 1;
-        P = Phi * pinv(Phi);
-        log_npd_bfdf_dyn(j,k) = norm(r_bfdf - P * r_bfdf) / (norm(r_bfdf) + eps);
+    for k = 1:steps
+        % 1. Non-Linear Plant Dynamics (The "Real World")
+        % We construct the quadratic terms vector d(x)
+        d_x =[x(1)^2; x(2)^2; x(3)^2; x(1)*x(2); x(1)*x(3); x(2)*x(3)];
+        % The state evolves using Linear Dynamics + Amplified Non-Linear Error
+        dx = A*x + B*u_val + (E_star * d_x) * dist_factor;
+        x = x + dx * dt;
         
-        % -- Robust Filter NPD --
-        Phi_r = [zeros(p,1), C*K1_paper(:,j), C*H_paper(:,j)];
-        Phi_r(j,1) = 1;
-        P_r = Phi_r * pinv(Phi_r);
-        log_npd_uio_dyn(j,k) = norm(r_uio - P_r * r_uio) / (norm(r_uio) + eps);
+        % Output Generation & Fault Injection
+        y_raw = C*x;
+        if time(k) >= fault_time 
+            y_raw(s_fault) = y_raw(s_fault) + fault_mag; 
+        end
+        
+        % 2. Standard Filter (BFDF) Execution
+        % Standard observer equation: dx = Ax + Bu + K(y - Cx)
+        r_bfdf = y_raw - C * x_hat_bfdf;
+        dx_bfdf = A * x_hat_bfdf + B * u_val + K_bfdf * r_bfdf;
+        x_hat_bfdf = x_hat_bfdf + dx_bfdf * dt;
+        
+        % 3. Robust Filter (UIO) Execution
+        % Uses the z-state and T matrix to decouple disturbances.
+        dz_uio = F_paper * z_uio + T_paper * B * u_val + K_paper * y_raw;
+        z_uio = z_uio + dz_uio * dt;
+        r_uio = y_raw - C * (z_uio + H_paper * y_raw);
+        
+        % Logging Residuals for plotting
+        log_r_bfdf(:,k) = r_bfdf;
+        log_r_uio(:,k) = r_uio;
+        
+        % 4. Dynamic NPD Calculation
+        % We calculate the "match score" for every sensor hypothesis at every time step.
+        for j=1:3
+            % -- Standard Filter NPD --
+            Phi =[eye(p)*0 + (j==1:p)', C*K_bfdf(:,j)]; 
+            Phi(:,1) = zeros(p,1); Phi(j,1) = 1;
+            P = Phi * pinv(Phi);
+            log_npd_bfdf_dyn(j,k) = norm(r_bfdf - P * r_bfdf) / (norm(r_bfdf) + eps);
+            
+            % -- Robust Filter NPD --
+            Phi_r =[zeros(p,1), C*K1_paper(:,j), C*H_paper(:,j)];
+            Phi_r(j,1) = 1;
+            P_r = Phi_r * pinv(Phi_r);
+            log_npd_uio_dyn(j,k) = norm(r_uio - P_r * r_uio) / (norm(r_uio) + eps);
+        end
     end
+    
+    % Store the final NPD values (Steady State) in the respective columns
+    Table1_BFDF(:, s_fault) = log_npd_bfdf_dyn(:, end);
+    Table2_UIO(:, s_fault)  = log_npd_uio_dyn(:, end);
+    
+    % Keep the dynamic logs of Sensor 1 intact so the plotting section below doesn't break
+    if s_fault == 1
+        plot_final_npd_bfdf = log_npd_bfdf_dyn(:, end);
+        plot_final_npd_uio = log_npd_uio_dyn(:, end);
+        plot_log_npd_bfdf_dyn = log_npd_bfdf_dyn;
+        plot_log_npd_uio_dyn = log_npd_uio_dyn;
+        plot_log_r_bfdf = log_r_bfdf;
+        plot_log_r_uio = log_r_uio;
+    end
+    
 end
 
-% Extract final NPD values for the bar chart (Steady State)
-final_npd_bfdf = log_npd_bfdf_dyn(:, end);
-final_npd_uio = log_npd_uio_dyn(:, end);
+% Restore variables for the plotting section (assumes Fault on Sensor 1)
+final_npd_bfdf = plot_final_npd_bfdf;
+final_npd_uio = plot_final_npd_uio;
+log_npd_bfdf_dyn = plot_log_npd_bfdf_dyn;
+log_npd_uio_dyn = plot_log_npd_uio_dyn;
+log_r_bfdf = plot_log_r_bfdf;
+log_r_uio = plot_log_r_uio;
+
+%% PRINT TABLES TO COMMAND WINDOW
+
+disp('========================================================================');
+disp('Table 1: Fault isolation using Beard fault detection filter');
+disp('------------------------------------------------------------------------');
+fprintf('          \tNo.1           \t\tNo.2    \t\tNo.3\n');
+fprintf('NPD_1     \t%.5f           \t%.5f      \t%.5f\n', Table1_BFDF(1,1), Table1_BFDF(1,2), Table1_BFDF(1,3));
+fprintf('NPD_2     \t%.5f           \t%.5f      \t%.5f\n', Table1_BFDF(2,1), Table1_BFDF(2,2), Table1_BFDF(2,3));
+fprintf('NPD_3     \t%.5f           \t%.5f      \t%.5f\n', Table1_BFDF(3,1), Table1_BFDF(3,2), Table1_BFDF(3,3));
+disp('========================================================================');
+disp(' ');
+disp('========================================================================');
+disp('Table 2: Fault isolation using robust fault detection filter');
+disp('------------------------------------------------------------------------');
+fprintf('          \tNo.1           \t\tNo.2      \t\tNo.3\n');
+fprintf('NPD_1     \t%.5f           \t%.5f      \t%.5f\n', Table2_UIO(1,1), Table2_UIO(1,2), Table2_UIO(1,3));
+fprintf('NPD_2     \t%.5f           \t%.5f      \t%.5f\n', Table2_UIO(2,1), Table2_UIO(2,2), Table2_UIO(2,3));
+fprintf('NPD_3     \t%.5f           \t%.5f      \t%.5f\n', Table2_UIO(3,1), Table2_UIO(3,2), Table2_UIO(3,3));
+disp('========================================================================');
 
 %% VISUALIZATION
 
