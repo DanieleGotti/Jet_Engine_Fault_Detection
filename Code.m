@@ -4,9 +4,8 @@ clc; clear; close all;
 
 %% SYSTEM DEFINITION & MATRICES
 
-% --- LINEAR MODEL ---
-% These matrices (A, B, C) represent the linearized model of the jet engine.
-% Both filters use this model as their baseline knowledge of the system.
+% LINEAR MODEL
+% A, B, C represent the linearized model of the jet engine.
 A = [-1.5581,  0.6925,  0.3974;
       0.2619, -2.2228,  0.2238;
       0       0      -10    ];
@@ -18,18 +17,14 @@ C = [1,0,0; 0,1,0; 0,0,1;
 [n, ~] = size(A); 
 [p, ~] = size(C);
 
-% --- NON-LINEAR ERROR TERMS ---
-% This matrix (E*) represents the "Reality Gap". It distributes second-order
-% terms (x^2, xy, etc.) into the state equation.
-% Ideally, a filter should ignore these, but Standard filters treat them as faults.
+% NON-LINEAR ERROR TERMS
+% Matrix E* represents the distributes second-order terms (x^2, xy, ...) into the state equation.
 E_star = [1.3293, 3.4440, 0.1375, -5.1304, -1.7826, -1.8719;
           5.6812, -0.5281, -0.3385, -1.6193, 0.5229, 0;
           0, 0, 0, 0, 0, 0];
 
-% --- ROBUST FILTER MATRICES ---
-% These are the specific matrices calculated by the authors to achieve
-% "Disturbance Decoupling". H and T work together to make the residual
-% insensitive to the unknown inputs (the non-linearities).
+% ROBUST FILTER MATRICES
+% Specific matrices calculated by the authors. 
 H_paper = [ 0.6117, -0.1170, 0, 0.3215, 0.3220, -0.1295;
            -0.1170,  0.9382, 0, 0.0605, 0.0623, -0.1916;
             0,       0,      0, 0,      0,       0     ];
@@ -40,16 +35,15 @@ T_paper = eye(n) - H_paper * C;
 
 %% FILTER DESIGN REVERSE ENGINEERING
 
-% --- Standard BFDF Design ---
-% We design the Standard Beard Fault Detection Filter using pole placement.
+% Standard BFDF Design 
 % It has no knowledge of E_star, so it assumes the linear model is perfect.
 pole = 3;
-K_bfdf = (A + pole * eye(n)) * pinv(C);
+K_bfdf = (A + pole * eye(n)) * pinv(C); % Paper equation
 
-% --- Robust UIO Reverse Engineering ---
+% Robust UIO Reverse Engineering 
 % To calculate the "NPD" (Normalized Projection Distance), we need to know
-% the directional gain matrix K1. The paper gives us the total gain K.
-% We solve the equation K = K1*(I - CH) + ... backwards to extract K1.
+% the directional gain matrix K1. The paper gives us the total gain K and
+% the equation K = K1*(I - CH) + ... to extract K1.
 term_A_HCA = A - H_paper * C * A;
 RHS = K_paper - term_A_HCA * H_paper;
 K1_paper = RHS * pinv(eye(p) - C * H_paper);
@@ -62,12 +56,11 @@ u_val = 0.20;       % Constant input
 fault_mag = 0.02;   % Fault magnitude (2%)
 fault_time = 3.0;   % Fault occurs at 3 seconds
 
-% We amplify the non-linear error (E_star) by 20x. This simulates a scenario
-% where the linear model is poor. This "stress test" is necessary to make
-% the Standard Filter fail, highlighting the need for Robustness.
+% We amplify the non-linear error (E_star) by 20x. This simulates a scenario where the linear model is poor. 
+% This stress test to make the Standard Filter fail.
 dist_factor = 20.0; 
 
-% Matrices to store the final Table results for all 3 sensors
+% Matrices to store the final table results for all 3 sensors
 Table1_BFDF = zeros(3,3);
 Table2_UIO  = zeros(3,3);
 
@@ -88,45 +81,41 @@ for s_fault = 1:3
     log_npd_uio_dyn = zeros(3, steps);  % Log for Robust Filter Decision
 
     for k = 1:steps
-        % 1. Non-Linear Plant Dynamics (The "Real World")
-        % We construct the quadratic terms vector d(x)
+        % Non-linear plant dynamics, we construct the quadratic terms vector d(x)
         d_x =[x(1)^2; x(2)^2; x(3)^2; x(1)*x(2); x(1)*x(3); x(2)*x(3)];
-        % The state evolves using Linear Dynamics + Amplified Non-Linear Error
         dx = A*x + B*u_val + (E_star * d_x) * dist_factor;
         x = x + dx * dt;
         
-        % Output Generation & Fault Injection
+        % Output generation & fault injection
         y_raw = C*x;
         if time(k) >= fault_time 
             y_raw(s_fault) = y_raw(s_fault) + fault_mag; 
         end
         
-        % 2. Standard Filter (BFDF) Execution
-        % Standard observer equation: dx = Ax + Bu + K(y - Cx)
+        % Standard filter (BFDF) execution
+        % dx = Ax + Bu + K(y - Cx)
         r_bfdf = y_raw - C * x_hat_bfdf;
         dx_bfdf = A * x_hat_bfdf + B * u_val + K_bfdf * r_bfdf;
         x_hat_bfdf = x_hat_bfdf + dx_bfdf * dt;
         
-        % 3. Robust Filter (UIO) Execution
-        % Uses the z-state and T matrix to decouple disturbances.
+        % Robust filter (UIO) execution
         dz_uio = F_paper * z_uio + T_paper * B * u_val + K_paper * y_raw;
         z_uio = z_uio + dz_uio * dt;
         r_uio = y_raw - C * (z_uio + H_paper * y_raw);
         
-        % Logging Residuals for plotting
+        % Logging residuals for plotting
         log_r_bfdf(:,k) = r_bfdf;
         log_r_uio(:,k) = r_uio;
         
-        % 4. Dynamic NPD Calculation
-        % We calculate the "match score" for every sensor hypothesis at every time step.
+        % NPD calculation
         for j=1:3
-            % -- Standard Filter NPD --
+            % Standard filter NPD
             Phi =[eye(p)*0 + (j==1:p)', C*K_bfdf(:,j)]; 
             Phi(:,1) = zeros(p,1); Phi(j,1) = 1;
             P = Phi * pinv(Phi);
             log_npd_bfdf_dyn(j,k) = norm(r_bfdf - P * r_bfdf) / (norm(r_bfdf) + eps);
             
-            % -- Robust Filter NPD --
+            % Robust filter NPD
             Phi_r =[zeros(p,1), C*K1_paper(:,j), C*H_paper(:,j)];
             Phi_r(j,1) = 1;
             P_r = Phi_r * pinv(Phi_r);
@@ -134,11 +123,10 @@ for s_fault = 1:3
         end
     end
     
-    % Store the final NPD values (Steady State) in the respective columns
+    % Store the final NPD values in the respective columns
     Table1_BFDF(:, s_fault) = log_npd_bfdf_dyn(:, end);
     Table2_UIO(:, s_fault)  = log_npd_uio_dyn(:, end);
     
-    % Keep the dynamic logs of Sensor 1 intact so the plotting section below doesn't break
     if s_fault == 1
         plot_final_npd_bfdf = log_npd_bfdf_dyn(:, end);
         plot_final_npd_uio = log_npd_uio_dyn(:, end);
@@ -150,7 +138,6 @@ for s_fault = 1:3
     
 end
 
-% Restore variables for the plotting section (assumes Fault on Sensor 1)
 final_npd_bfdf = plot_final_npd_bfdf;
 final_npd_uio = plot_final_npd_uio;
 log_npd_bfdf_dyn = plot_log_npd_bfdf_dyn;
@@ -158,7 +145,7 @@ log_npd_uio_dyn = plot_log_npd_uio_dyn;
 log_r_bfdf = plot_log_r_bfdf;
 log_r_uio = plot_log_r_uio;
 
-%% PRINT TABLES TO COMMAND WINDOW
+%% PRINT TABLES 
 
 disp('========================================================================');
 disp('Table 1: Fault isolation using Beard fault detection filter');
@@ -180,14 +167,12 @@ disp('========================================================================')
 
 %% VISUALIZATION
 
-% --- FIGURE 1: SUMMARY BAR CHART ---
-% This chart compares the final diagnosis of both filters.
-% Goal: Show that Standard Filter picks the wrong sensor, Robust picks the right one.
+% FIGURE 1: SUMMARY BAR CHART
 figure('Color','w','Position',[50 500 700 400]);
 bar_data = [final_npd_bfdf, final_npd_uio];
 b = bar(bar_data);
-b(1).FaceColor = [0.85 0.33 0.1]; % Burnt Orange (Standard)
-b(2).FaceColor = [0.1 0.6 0.3];   % Forest Green (Robust)
+b(1).FaceColor = [0.85 0.33 0.1]; 
+b(2).FaceColor = [0.1 0.6 0.3];   
 
 title('FINAL VERDICT: Real Fault on Sensor 1');
 xlabel('Fault Hypothesis (Which sensor is broken?)'); 
@@ -201,13 +186,11 @@ text(1, final_npd_uio(1), '\downarrow Robust Correct (Selects S1)', ...
     'Vert','bottom','Horiz','center', 'FontSize', 10, 'Color','k', 'FontWeight','bold');
 
 
-% --- FIGURE 2: THE FAILURE ---
-% This graph shows the decision confidence over time for the Standard Filter.
-% Goal: Show the Red Line (Hypothesis 2) dropping lower than the Green Line (Hypothesis 1).
+% FIGURE 2: STANDARD FILTER DECISION 
 figure('Color','w','Position',[50 50 600 350]);
-plot(time, log_npd_bfdf_dyn(1,:), 'g-', 'LineWidth', 1.5); hold on; % S1 (Real Fault)
-plot(time, log_npd_bfdf_dyn(2,:), 'r--', 'LineWidth', 2.0);        % S2 (Wrong Choice)
-plot(time, log_npd_bfdf_dyn(3,:), 'k:', 'LineWidth', 1.0);         % S3
+plot(time, log_npd_bfdf_dyn(1,:), 'g-', 'LineWidth', 1.5); hold on; 
+plot(time, log_npd_bfdf_dyn(2,:), 'r--', 'LineWidth', 2.0);        
+plot(time, log_npd_bfdf_dyn(3,:), 'k:', 'LineWidth', 1.0);         
 xline(fault_time, 'k-', 'Fault Injection');
 
 title('FAILURE: Standard Filter Decision over Time');
@@ -218,13 +201,11 @@ grid on; ylim([0 1.2]);
 text(fault_time + 0.5, 0.4, '\downarrow Wrong Decision (S2 selected)!', 'Color', 'r', 'FontWeight', 'bold');
 
 
-% --- FIGURE 3: THE SOLUTION ---
-% This graph shows the decision confidence over time for the Robust Filter.
-% Goal: Show the Green Line (Hypothesis 1) dropping instantly to Zero.
+% FIGURE 3: ROBUST FILTER DECISION
 figure('Color','w','Position',[700 50 600 350]);
-plot(time, log_npd_uio_dyn(1,:), 'g-', 'LineWidth', 2.5); hold on; % S1 (Correct)
-plot(time, log_npd_uio_dyn(2,:), 'b--', 'LineWidth', 1.0);        % S2
-plot(time, log_npd_uio_dyn(3,:), 'k:', 'LineWidth', 1.0);         % S3
+plot(time, log_npd_uio_dyn(1,:), 'g-', 'LineWidth', 2.5); hold on;
+plot(time, log_npd_uio_dyn(2,:), 'b--', 'LineWidth', 1.0);        
+plot(time, log_npd_uio_dyn(3,:), 'k:', 'LineWidth', 1.0);         
 xline(fault_time, 'k-', 'Fault Injection');
 
 title('SUCCESS: Robust Filter Decision over Time');
@@ -235,10 +216,7 @@ grid on; ylim([0 1.2]);
 text(fault_time + 0.5, 0.1, '\leftarrow Instant Isolation of S1', 'FontSize', 10, 'FontWeight', 'bold');
 
 
-% --- FIGURE 4: FULL TIME DOMAIN ANALYSIS ---
-% This graph shows the magnitude of the residual vector ||r(t)||.
-% Goal: Show "Pre-Fault" behavior. Standard Filter is noisy (False Alarms).
-% Robust Filter is flat (Decoupled).
+% FIGURE 4: FULL TIME ANALYSIS
 figure('Color','w','Position',[400 450 800 300]);
 
 norm_b = vecnorm(log_r_bfdf);
